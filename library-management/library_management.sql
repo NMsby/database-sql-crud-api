@@ -267,3 +267,165 @@ INSERT INTO reservations (book_id, member_id, reservation_date, expiry_date, sta
 (3, 5, '2025-04-15', '2025-04-22', 'Expired'),
 (4, 1, '2025-04-20', '2025-04-27', 'Active'),
 (5, 2, '2025-04-25', '2025-05-02', 'Active');
+
+-- -----------------------------------------------------
+-- Create View for Book Availability
+-- -----------------------------------------------------
+CREATE VIEW book_availability AS
+SELECT
+    b.book_id,
+    b.title,
+    b.isbn,
+    CONCAT(a.first_name, ' ', a.last_name) AS author_name,
+    c.category_name,
+    b.available_copies,
+    b.total_copies
+FROM
+    books b
+JOIN
+    book_authors ba ON b.book_id = ba.book_id
+JOIN
+    authors a ON ba.author_id = a.author_id
+JOIN
+    book_categories bc ON b.book_id = bc.book_id
+JOIN
+    categories c ON bc.category_id = c.category_id
+ORDER BY
+    b.title;
+
+-- -----------------------------------------------------
+-- Create View for Member Loans
+-- -----------------------------------------------------
+CREATE VIEW member_loans AS
+SELECT
+    m.member_id,
+    CONCAT(m.first_name, ' ', m.last_name) AS member_name,
+    b.title,
+    l.issue_date,
+    l.due_date,
+    l.return_date,
+    l.status,
+    CASE
+        WHEN l.status = 'Overdue' THEN 'Yes'
+        ELSE 'No'
+    END AS overdue
+FROM
+    members m
+JOIN
+    loans l ON m.member_id = l.member_id
+JOIN
+    books b ON l.book_id = b.book_id
+ORDER BY
+    m.last_name, m.first_name;
+
+-- -----------------------------------------------------
+-- Create Stored Procedure for Checking Out Books
+-- -----------------------------------------------------
+DELIMITER //
+CREATE PROCEDURE check_out_book(
+    IN p_book_id INT,
+    IN p_member_id INT,
+    IN p_issue_date DATE,
+    IN p_due_date DATE
+)
+BEGIN
+    DECLARE v_available_copies INT;
+
+    -- Check if the book is available
+    SELECT available_copies INTO v_available_copies
+    FROM books WHERE book_id = p_book_id;
+
+    IF v_available_copies > 0 THEN
+        -- Create a new loan record
+        INSERT INTO loans (book_id, member_id, issue_date, due_date, status)
+        VALUES (p_book_id, p_member_id, p_issue_date, p_due_date, 'Borrowed');
+
+        -- Update available copies count
+        UPDATE books
+        SET available_copies = available_copies - 1
+        WHERE book_id = p_book_id;
+
+        SELECT 'Book checked out successfully.' AS message;
+    ELSE
+        SELECT 'Book is not available for checkout.' AS message;
+    END IF;
+END //
+DELIMITER ;
+
+-- -----------------------------------------------------
+-- Create Stored Procedure for Returning Books
+-- -----------------------------------------------------
+DELIMITER //
+CREATE PROCEDURE return_book(
+    IN p_loan_id INT,
+    IN p_return_date DATE
+)
+BEGIN
+    DECLARE v_book_id INT;
+    DECLARE v_due_date DATE;
+    DECLARE v_days_overdue INT;
+
+    -- Get book_id and due_date for the loan
+    SELECT book_id, due_date
+    INTO v_book_id, v_due_date
+    FROM loans
+    WHERE loan_id = p_loan_id;
+
+    -- Update the loan record
+    UPDATE loans
+    SET return_date = p_return_date,
+        status = 'Returned'
+    WHERE loan_id = p_loan_id;
+
+    -- Update available copies count
+    UPDATE books
+    SET available_copies = available_copies + 1
+    WHERE book_id = v_book_id;
+
+    -- Calculate if the book is overdue
+    IF p_return_date > v_due_date THEN
+        SET v_days_overdue = DATEDIFF(p_return_date, v_due_date);
+
+        -- Create a fine record (€1 per day overdue)
+        INSERT INTO fines (loan_id, fine_amount, fine_date, payment_status)
+        VALUES (p_loan_id, v_days_overdue * 1.00, p_return_date, 'Unpaid');
+
+        SELECT CONCAT('Book returned with a fine of €', v_days_overdue, ' for being ', v_days_overdue, ' days overdue.') AS message;
+    ELSE
+        SELECT 'Book returned successfully with no fine.' AS message;
+    END IF;
+END //
+DELIMITER ;
+
+-- -----------------------------------------------------
+-- Create Trigger for Loan Status Update
+-- -----------------------------------------------------
+DELIMITER //
+CREATE TRIGGER update_loan_status_on_insert
+AFTER INSERT ON loans
+FOR EACH ROW
+BEGIN
+    -- Find and fulfill any active reservation for this book
+    UPDATE reservations
+    SET status = 'Fulfilled'
+    WHERE book_id = NEW.book_id
+    AND member_id = NEW.member_id
+    AND status = 'Active'
+    LIMIT 1;
+END //
+DELIMITER ;
+
+-- -----------------------------------------------------
+-- Create Trigger for Book Availability Update
+-- -----------------------------------------------------
+DELIMITER //
+CREATE TRIGGER update_available_copies_on_insert
+BEFORE INSERT ON books
+FOR EACH ROW
+BEGIN
+    -- Ensure available copies doesn't exceed total copies
+    IF NEW.available_copies > NEW.total_copies THEN
+        SET NEW.available_copies = NEW.total_copies;
+    END IF;
+END //
+DELIMITER ;
