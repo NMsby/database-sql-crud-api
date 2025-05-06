@@ -5,6 +5,7 @@ import enum
 
 from .database import Base
 
+
 # Enum classes for status and priority
 class ProjectStatus(str, enum.Enum):
     NOT_STARTED = "Not Started"
@@ -12,17 +13,20 @@ class ProjectStatus(str, enum.Enum):
     COMPLETED = "Completed"
     ON_HOLD = "On Hold"
 
+
 class TaskStatus(str, enum.Enum):
     TO_DO = "To Do"
     IN_PROGRESS = "In Progress"
     COMPLETED = "Completed"
     DEFERRED = "Deferred"
 
+
 class TaskPriority(str, enum.Enum):
     LOW = "Low"
     MEDIUM = "Medium"
     HIGH = "High"
     URGENT = "Urgent"
+
 
 # Database models
 class User(Base):
