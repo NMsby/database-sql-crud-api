@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-This repository contains two comprehensive database systems developed as part of the Week 8 Assignment for the Database Design & Programming with SQL module:
+This repository contains two comprehensive database systems:
 
 1. **Library Management System**: A complete MySQL database solution for managing a library's operations including members, books, loans, and more.
 2. **Task Manager API**: A fully-functional CRUD API built with FastAPI and MySQL that allows users to manage tasks, projects, and categories.
